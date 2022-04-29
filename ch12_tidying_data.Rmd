@@ -1,5 +1,5 @@
 ---
-title: "__TITLE__"
+title: "R4DS: Chapter 12 tidying data"
 author: "daniel.lundin@lnu.se"
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
 output:
@@ -43,8 +43,40 @@ library(grateful)
 ```{r constants}
 ```
 
-```{r read-data}
+```{r read-data-tax}
+taxonomy <- read_tsv(
+  'data/taxonomy_simple.tsv', 
+  col_types = cols(seqname = col_character(), taxonomy = col_character())
+) %>%
+  mutate(taxonomy = str_remove_all(taxonomy, '[a-z]__')) %>%
+  separate(taxonomy, c('domain', 'phylum', 'class', 'order', 'family', 'genus', 'species'), sep = ';')
 ```
+
+```{r read-data-tax-dirty}
+taxdirty <- read_tsv(
+  'data/taxonomy_incomplete.tsv',
+  col_types = cols(seqname = col_character(), taxonomy = col_character())
+) %>%
+  separate_rows(taxonomy, sep = ';') %>%
+  separate(taxonomy, c('rank', 'taxon'), sep = '__') %>%
+  pivot_wider(names_from = rank, values_from = taxon)
+```
+
+```{r rnr-comb-plot, fig.width = 12, fig.height = 6, fig.cap = '**These are the RNR combinations I found.**'}
+read_tsv(
+  'data/rnr_selection.tsv',
+  show_col_types = FALSE
+) %>%
+  select(tdomain:pclass) %>%
+  distinct() %>%
+  pivot_wider(names_from = pclass, values_from = pclass) %>%
+  unite('rnrs', NrdA, NrdD, NrdJ, sep = ':', na.rm = TRUE) %>%
+  count(tdomain, tphylum, rnrs) %>%
+  ggplot(aes(x = tphylum, y = n, colour = rnrs)) +
+  geom_point() +
+  coord_flip()
+```
+
 
 # Introduction
 
