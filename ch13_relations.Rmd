@@ -1,0 +1,117 @@
+---
+title: "Chapter 13 relations"
+author: "daniel.lundin@lnu.se"
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+output:
+    html_document:
+        toc: yes
+        toc_float:
+          collapse: no
+        fig_caption: yes
+        code_folding: hide
+    pdf_document:
+        fig_caption: yes
+        fig_height: 9
+        fig_width: 8
+        number_sections: yes
+        toc: yes
+bibliography:
+    - grateful-refs.bib
+---
+
+```{r setup, echo=F, cache = FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.path='figures/', cache = TRUE)
+ggplot2::theme_set(ggplot2::theme_bw())
+```
+
+```{r libraries, message = FALSE, cache = FALSE, include = FALSE}
+library(readr)
+library(data.table)
+library(dtplyr)
+library(dplyr, warn.conflicts = FALSE)
+library(tidyr)
+library(purrr)
+library(stringr)
+library(ggplot2)
+library(knitr)
+#library(grateful)
+```
+
+```{r constants}
+```
+
+```{r read-data}
+# Counts table, a wide table, i.e. sequences as rows, samples as columns
+counts <- read_tsv(
+  'data/feature-table.tsv',
+  col_types = cols(.default = col_integer(), seqid = col_character())
+) %>%
+  # Convert to long format
+  pivot_longer(2:ncol(.), names_to = 'sample', values_to = 'count') %>%
+  # Make the table smaller by removing zeroes
+  filter(count > 0) %>%
+  # Calculate relative abundances per sample
+  group_by(sample) %>%
+  mutate(relab = count/sum(count)) %>%
+  ungroup()
+
+# Read the sample information table
+samples <- read_csv('data/metadata.csv', show_col_types = FALSE)
+
+# Taxonomy table
+taxonomy <- read_tsv('data/taxonomy.tsv', col_types = cols(seqid = col_character(), taxon = col_character(), confidence = col_double())) %>%
+  # Remove the leading D_0__ etc. pattern from all names
+  mutate(taxon = str_remove_all(taxon, 'D_[0-9]__')) %>%
+  # Split the taxonomy string into individual taxa
+  separate(taxon, c('domain', 'phylum', 'class', 'order', 'family', 'genus', 'species'), sep = ';', fill = 'right')
+```
+
+```{r topphyla}
+# Calculate the 10 most abundant phyla
+topphyla <- taxonomy %>%
+  inner_join(counts, by = 'seqid') %>%
+  group_by(phylum, sample) %>%
+  # First, get the relative abundance for each phylum in each sample
+  summarise(relab = sum(relab), .groups = 'drop_last') %>%
+  # Then find the maximum for each phylum
+  summarise(relab = max(relab)) %>%
+  # Get the top 10
+  slice_max(n = 10, order_by = relab)
+```
+
+
+# Introduction
+
+# Materials and Methods
+
+# Results
+
+```{r plot-phyla, fig.width = 8, fig.height = 8}
+samples %>% select(sample, date) %>%
+  inner_join(
+    counts %>% select(seqid, sample, relab),
+    by = 'sample'
+  ) %>%
+  inner_join(
+    taxonomy %>% select(seqid, domain, phylum),
+    by = 'seqid'
+  ) %>%
+  # Join in the top 10 phyla with a left join, so we're not subsetting
+  left_join(
+    topphyla %>% 
+      # Duplicate the phylum name into a new column, that's not swallowed by being key in the join
+      transmute(phylum, topphylum = phylum), 
+    by = 'phylum'
+  ) %>%
+  # Rows that have an NA in the topphylum column belongs to another phylum, specify that
+  replace_na(list(topphylum = 'Other')) %>%
+  # Plot as a stacked barplot
+  ggplot(aes(x = sample, y = relab, fill = topphylum)) +
+  geom_col() +
+  scale_fill_brewer(palette = 'Paired')
+```
+
+
+# Discussion
+
+# References
